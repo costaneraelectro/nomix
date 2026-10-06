@@ -99,6 +99,19 @@ export function useData() {
     return () => { alive = false; clearTimeout(timer); };
   }, [applyApi]);
 
+  const [pendientesLocales, setPendientesLocales] = useState(0);
+  useEffect(() => { if (modo === 'api') setPendientesLocales(readLocal<Venta>(LS_VENTAS).length); }, [modo]);
+
+  /** Sube al servidor lo que quedó guardado en este navegador (modo local anterior). */
+  const importarLocales = useCallback(async () => {
+    const lv = readLocal<Venta>(LS_VENTAS);
+    const r = await api<ApiState & { added: number }>('POST', '/api/ventas/import', { ventas: lv, vendedores: readLocal<Vendedor>(LS_VEND) });
+    applyApi(r);
+    writeLocal(`${LS_VENTAS}.respaldo`, lv); // copia de seguridad por si acaso
+    writeLocal(LS_VENTAS, []); writeLocal(LS_VEND, []); setPendientesLocales(0);
+    return { total: lv.length, nuevas: r.added };
+  }, [applyApi]);
+
   const vendedores = useMemo(() => {
     const map = new Map<string, Vendedor>();
     for (const v of [...VENDEDORES, ...extra]) map.set(v.codigo, v);
@@ -137,5 +150,5 @@ export function useData() {
     setExtra(next); writeLocal(LS_VEND, next);
   }, [modo, viaApi]);
 
-  return { modo, ventas, vendedores, loading, error, agregar, editar, eliminar, agregarVendedor };
+  return { modo, pendientesLocales, importarLocales, ventas, vendedores, loading, error, agregar, editar, eliminar, agregarVendedor };
 }

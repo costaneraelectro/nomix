@@ -84,6 +84,26 @@ export async function handle(
       const { state, etag } = await readState(store);
       return { status: 200, json: { ...state, etag } };
     }
+    if (method === 'POST' && parts[0] === 'ventas' && parts[1] === 'import') {
+      const incoming = Array.isArray(body?.ventas) ? (body!.ventas as Record<string, unknown>[]) : [];
+      const vend = Array.isArray(body?.vendedores) ? (body!.vendedores as Record<string, unknown>[]) : [];
+      if (incoming.length > 5000) throw new HttpError(400, 'Demasiadas ventas');
+      const clean = incoming.map((b) => {
+        const t = Number(b.createdAt);
+        return { ...cleanVenta(b), id: newId(), createdAt: Number.isFinite(t) && t > 0 ? t : now() } as Venta;
+      });
+      const dupKey = (v: Venta) => [v.fecha, v.vendedorCodigo, v.orden, v.monto, v.sublinea].join('|');
+      let added = 0;
+      const r = await mutate(store, (s) => {
+        const have = new Set(s.ventas.map(dupKey));
+        const nuevas = clean.filter((v) => !have.has(dupKey(v)));
+        added = nuevas.length;
+        const vs = new Map(s.vendedores.map((v) => [v.codigo, v]));
+        for (const x of vend) { const c = str(x.codigo, 20), n = str(x.nombre); if (/^\d{3,}$/.test(c) && n.length >= 3) vs.set(c, { codigo: c, nombre: n }); }
+        return { vendedores: [...vs.values()], ventas: [...nuevas, ...s.ventas].sort((a, b) => b.createdAt - a.createdAt) };
+      });
+      return { status: 200, json: { ...r.state, etag: r.etag, added } };
+    }
     if (method === 'POST' && parts[0] === 'ventas') {
       const v = cleanVenta(body ?? {});
       const r = await mutate(store, (s) => ({ ...s, ventas: [{ ...v, id: newId(), createdAt: now() }, ...s.ventas] }));

@@ -53,6 +53,14 @@ export default function App() {
         </nav>
       </header>
       {d.error && <p className="err banner">{d.error}</p>}
+      {d.modo === 'api' && d.pendientesLocales > 0 && (
+        <div className="notice recover">
+          <span>Hay <b>{d.pendientesLocales}</b> venta(s) guardadas solo en este navegador (de antes de pasar a modo en línea).</span>
+          <button className="cta slim" onClick={() => void d.importarLocales()
+            .then((r) => showToast(`✔ ${r.nuevas} venta(s) subidas${r.total - r.nuevas ? ` · ${r.total - r.nuevas} ya estaban` : ''}`))
+            .catch(() => showToast('No se pudo subir, intenta de nuevo'))}>Subir al servidor</button>
+        </div>
+      )}
 
       <main>
         <AnimatePresence mode="wait" initial={false}>

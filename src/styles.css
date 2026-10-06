@@ -210,3 +210,4 @@ input:focus, select:focus { outline: none; border-color: var(--green-strong); bo
 .rank-main { flex: 1; display: grid; gap: 6px; min-width: 0; } .rank-top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; } .rank-top span { font-weight: 800; font-variant-numeric: tabular-nums; }
 .rank small { color: var(--muted); font-size: 12px; }
 @media (max-width: 820px) { .podium { grid-template-columns: 1fr; } }
+.notice.recover { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
