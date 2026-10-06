@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
+import { descargarCsv, ventasCsv } from '../lib/export';
 import { longDate, money, todayISO } from '../lib/format';
 import type { Venta } from '../lib/store';
 import { SaleRow } from './SaleRow';
 
-export function SalesView({ ventas, onToggle, onEdit, onDelete }: {
-  ventas: Venta[]; onToggle: (id: string, b: boolean) => void; onEdit: (v: Venta) => void; onDelete: (id: string) => void;
+export function SalesView({ ventas, onToggle, onEdit, onDelete, onToast }: {
+  ventas: Venta[]; onToggle: (id: string, b: boolean) => void; onEdit: (v: Venta) => void; onDelete: (id: string) => void; onToast: (m: string) => void;
 }) {
   const [fecha, setFecha] = useState(todayISO());
   const [filtro, setFiltro] = useState<'todas' | 'pend'>('todas');
@@ -16,6 +17,11 @@ export function SalesView({ ventas, onToggle, onEdit, onDelete }: {
       (!n || v.orden.includes(n) || v.vendedorNombre.toLowerCase().includes(n) || v.vendedorCodigo.includes(n)));
   }, [ventas, fecha, filtro, buscar]);
   const total = list.reduce((a, v) => a + v.monto, 0);
+  const descargar = (todas: boolean) => {
+    const sel = todas ? ventas : ventas.filter((v) => v.fecha === fecha);
+    if (!sel.length) return onToast('No hay ventas para descargar');
+    descargarCsv(todas ? 'ordenes-no-mix-todas.csv' : `ordenes-no-mix-${fecha}.csv`, ventasCsv(sel));
+  };
 
   return (
     <section className="panel">
@@ -26,6 +32,11 @@ export function SalesView({ ventas, onToggle, onEdit, onDelete }: {
           <div className="seg small">
             <button className={filtro === 'todas' ? 'on' : ''} onClick={() => setFiltro('todas')}>Todas</button>
             <button className={filtro === 'pend' ? 'on' : ''} onClick={() => setFiltro('pend')}>Sin boletear</button>
+          </div></div>
+        <div className="field"><span>Descargar detalle</span>
+          <div className="btn-pair">
+            <button className="ghost slim" onClick={() => descargar(false)}>Esta fecha</button>
+            <button className="cta slim" onClick={() => descargar(true)}>Todas</button>
           </div></div>
       </div>
       <p className="muted">{longDate(fecha)} · {list.length} orden(es) · {money(total)}</p>

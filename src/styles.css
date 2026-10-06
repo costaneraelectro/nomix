@@ -189,3 +189,4 @@ input:focus, select:focus { outline: none; border-color: var(--green-strong); bo
   .row { grid-template-columns: 1fr; } .sales.wide { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .sync.on i { animation: none; } * { transition-duration: 0.01ms !important; } }
+.btn-pair { display: flex; gap: 8px; }

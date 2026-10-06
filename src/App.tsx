@@ -60,7 +60,7 @@ export default function App() {
                 onToggle={toggle} onEdit={setEditing} onDelete={remove} onNewVendor={setVendorModal} />
             )}
             {tab === 'reporte' && <ReportView ventas={d.ventas} onToast={showToast} />}
-            {tab === 'ventas' && <SalesView ventas={d.ventas} onToggle={toggle} onEdit={setEditing} onDelete={remove} />}
+            {tab === 'ventas' && <SalesView ventas={d.ventas} onToggle={toggle} onEdit={setEditing} onDelete={remove} onToast={showToast} />}
             {tab === 'conciliar' && (
               <ReconcileView ventas={d.ventas} vendedores={d.vendedores} onAdd={d.agregar} onEdit={d.editar}
                 onAddVendedor={d.agregarVendedor} onToast={showToast} />
