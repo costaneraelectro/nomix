@@ -152,6 +152,14 @@ export function useData() {
     setVentas(next); writeLocal(LS_VENTAS, next);
   }, [modo, viaApi]);
 
+  const importarVentas = useCallback(async (lista: NuevaVenta[]) => {
+    if (!lista.length) return;
+    if (db) { await Promise.all(lista.map((v) => addDoc(collection(db!, 'ventas'), { ...v, createdAt: Date.now() }))); return; }
+    if (modo === 'api') return viaApi('POST', '/api/ventas/import', { ventas: lista });
+    const next = [...lista.map((v) => ({ ...v, createdAt: Date.now(), id: crypto.randomUUID() })), ...readLocal<Venta>(LS_VENTAS)];
+    setVentas(next); writeLocal(LS_VENTAS, next);
+  }, [modo, viaApi]);
+
   const agregarVendedor = useCallback(async (v: Vendedor) => {
     if (db) { await setDoc(doc(db, 'vendedores', v.codigo), v); return; }
     if (modo === 'api') return viaApi('POST', '/api/vendedores', v);
@@ -159,5 +167,5 @@ export function useData() {
     setExtra(next); writeLocal(LS_VEND, next);
   }, [modo, viaApi]);
 
-  return { modo, pendientesLocales, importarLocales, ventas, vendedores, loading, error, agregar, editar, eliminar, eliminarVarias, agregarVendedor };
+  return { modo, pendientesLocales, importarLocales, ventas, vendedores, loading, error, agregar, editar, eliminar, eliminarVarias, importarVentas, agregarVendedor };
 }

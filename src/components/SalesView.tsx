@@ -3,13 +3,13 @@ import { AnimatePresence } from 'framer-motion';
 import { descargarCsv, ventasCsv } from '../lib/export';
 import { pedidoSinOC } from '../lib/orden';
 import { longDate, money, todayISO } from '../lib/format';
-import type { Venta } from '../lib/store';
+import type { NuevaVenta, Venta } from '../lib/store';
 import { CorregirDia } from './CorregirDia';
 import { SaleRow } from './SaleRow';
 
-export function SalesView({ ventas, onToggle, onEdit, onDelete, onSetOC, onDeleteMany, onToast }: {
+export function SalesView({ ventas, onToggle, onEdit, onDelete, onSetOC, onDeleteMany, onImport, onToast }: {
   ventas: Venta[]; onToggle: (id: string, b: boolean) => void; onEdit: (v: Venta) => void; onDelete: (id: string) => void;
-  onSetOC: (id: string, oc: string) => void; onDeleteMany: (ids: string[]) => Promise<void>; onToast: (m: string) => void;
+  onSetOC: (id: string, oc: string) => void; onDeleteMany: (ids: string[]) => Promise<void>; onImport: (l: NuevaVenta[]) => Promise<void>; onToast: (m: string) => void;
 }) {
   const [fecha, setFecha] = useState(todayISO());
   const [filtro, setFiltro] = useState<'todas' | 'pend' | 'sinoc'>('todas');
@@ -53,6 +53,6 @@ export function SalesView({ ventas, onToggle, onEdit, onDelete, onSetOC, onDelet
         {!list.length && <li className="empty-state">Sin ventas para este filtro.</li>}
       </ul>
     </section>
-    <CorregirDia ventas={ventas} fecha={fecha} onDeleteMany={onDeleteMany} onToast={onToast} />
+    <CorregirDia ventas={ventas} fecha={fecha} onDeleteMany={onDeleteMany} onImport={onImport} onToast={onToast} />
     </div>
   );}

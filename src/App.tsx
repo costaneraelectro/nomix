@@ -72,7 +72,7 @@ export default function App() {
             )}
             {tab === 'reporte' && <ReportView ventas={d.ventas} onToast={showToast} />}
             {tab === 'ranking' && <RankingView ventas={d.ventas} />}
-            {tab === 'ventas' && <SalesView ventas={d.ventas} onToggle={toggle} onEdit={setEditing} onDelete={remove} onSetOC={setOC} onDeleteMany={d.eliminarVarias} onToast={showToast} />}
+            {tab === 'ventas' && <SalesView ventas={d.ventas} onToggle={toggle} onEdit={setEditing} onDelete={remove} onSetOC={setOC} onDeleteMany={d.eliminarVarias} onImport={d.importarVentas} onToast={showToast} />}
             {tab === 'conciliar' && (
               <ReconcileView ventas={d.ventas} vendedores={d.vendedores} onAdd={d.agregar} onEdit={d.editar}
                 onAddVendedor={d.agregarVendedor} onToast={showToast} />

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { descargarCsv, ventasCsv } from '../lib/export';
 import { longDate, money } from '../lib/format';
-import type { Venta } from '../lib/store';
+import type { NuevaVenta, Venta } from '../lib/store';
+import { RestaurarCSV } from './RestaurarCSV';
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 const medianocheSiguiente = (f: string) => {
@@ -10,8 +11,8 @@ const medianocheSiguiente = (f: string) => {
 };
 
 /** Ayuda a sacar ventas de más: las registradas después del cierre del día o agregadas desde Looker. */
-export function CorregirDia({ ventas, fecha, onDeleteMany, onToast }: {
-  ventas: Venta[]; fecha: string; onDeleteMany: (ids: string[]) => Promise<void>; onToast: (m: string) => void;
+export function CorregirDia({ ventas, fecha, onDeleteMany, onImport, onToast }: {
+  ventas: Venta[]; fecha: string; onDeleteMany: (ids: string[]) => Promise<void>; onImport: (l: NuevaVenta[]) => Promise<void>; onToast: (m: string) => void;
 }) {
   const [corte, setCorte] = useState(medianocheSiguiente(fecha));
   const [objetivo, setObjetivo] = useState('');
@@ -76,6 +77,7 @@ export function CorregirDia({ ventas, fecha, onDeleteMany, onToast }: {
         <button className={confirm ? 'cta warnbtn' : 'ghost'} disabled={busy || !sel.length} onClick={() => void borrar()}>
           {busy ? 'Eliminando…' : confirm ? `¿Confirmar? Eliminar ${sel.length} (${money(totalSel)})` : `Eliminar ${sel.length} venta(s) seleccionada(s)`}</button>
       </div>
+      <RestaurarCSV ventas={ventas} onDeleteMany={onDeleteMany} onImport={onImport} onToast={onToast} />
     </details>
   );
 }

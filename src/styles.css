@@ -218,3 +218,4 @@ input:focus, select:focus { outline: none; border-color: var(--green-strong); bo
 .tbl tr.off td { opacity: .4; }
 .corregir summary { color: var(--warn); }
 input[type=datetime-local] { width: 100%; background: #fff; border: 1.5px solid var(--line2); border-radius: 12px; padding: 12px 14px; min-height: 48px; }
+.restaurar { display: grid; gap: 14px; margin-top: 8px; padding-top: 16px; border-top: 2px dashed var(--line2); } .restaurar h3 { font-size: 15px; }
