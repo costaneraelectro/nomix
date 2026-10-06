@@ -14,6 +14,7 @@ export interface Venta {
   monto: number;
   orden: string;      // lo que se anotó (puede ser N° de pedido, empieza con 1)
   ordenOC?: string;   // N° de orden (OC) que aparece en Looker
+  origen?: 'looker';  // agregada desde Conciliar (no la registró un asesor)
   grupo: GrupoId;
   sublinea: string;
   boleteado: boolean;
@@ -143,6 +144,14 @@ export function useData() {
     setVentas(next); writeLocal(LS_VENTAS, next);
   }, [modo, viaApi]);
 
+  const eliminarVarias = useCallback(async (ids: string[]) => {
+    if (db) { await Promise.all(ids.map((id) => deleteDoc(doc(db!, 'ventas', id)))); return; }
+    if (modo === 'api') return viaApi('POST', '/api/ventas/delete', { ids });
+    const set = new Set(ids);
+    const next = readLocal<Venta>(LS_VENTAS).filter((v) => !set.has(v.id));
+    setVentas(next); writeLocal(LS_VENTAS, next);
+  }, [modo, viaApi]);
+
   const agregarVendedor = useCallback(async (v: Vendedor) => {
     if (db) { await setDoc(doc(db, 'vendedores', v.codigo), v); return; }
     if (modo === 'api') return viaApi('POST', '/api/vendedores', v);
@@ -150,5 +159,5 @@ export function useData() {
     setExtra(next); writeLocal(LS_VEND, next);
   }, [modo, viaApi]);
 
-  return { modo, pendientesLocales, importarLocales, ventas, vendedores, loading, error, agregar, editar, eliminar, agregarVendedor };
+  return { modo, pendientesLocales, importarLocales, ventas, vendedores, loading, error, agregar, editar, eliminar, eliminarVarias, agregarVendedor };
 }

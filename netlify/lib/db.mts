@@ -9,6 +9,7 @@ export interface Venta {
   monto: number;
   orden: string;
   ordenOC?: string;
+  origen?: string;
   grupo: string;
   sublinea: string;
   boleteado: boolean;
@@ -63,7 +64,7 @@ function cleanVenta(b: Record<string, unknown>): Omit<Venta, 'id' | 'createdAt'>
   const monto = Number(b.monto);
   const v = {
     fecha: str(b.fecha, 10), vendedorCodigo: str(b.vendedorCodigo, 20), vendedorNombre: str(b.vendedorNombre),
-    monto, orden: str(b.orden, 40), ordenOC: str(b.ordenOC, 40) || undefined,
+    monto, orden: str(b.orden, 40), ordenOC: str(b.ordenOC, 40) || undefined, origen: str(b.origen, 20) || undefined,
     grupo: str(b.grupo, 20), sublinea: str(b.sublinea), boleteado: Boolean(b.boleteado),
   };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v.fecha)) throw new HttpError(400, 'Fecha inválida');
@@ -83,6 +84,13 @@ export async function handle(
       if (have && have === (await currentEtag(store))) return { status: 200, json: { unchanged: true, etag: have } };
       const { state, etag } = await readState(store);
       return { status: 200, json: { ...state, etag } };
+    }
+    if (method === 'POST' && parts[0] === 'ventas' && parts[1] === 'delete') {
+      const ids = new Set(Array.isArray(body?.ids) ? (body!.ids as unknown[]).map((x) => str(x, 80)) : []);
+      if (!ids.size || ids.size > 5000) throw new HttpError(400, 'Sin ventas para eliminar');
+      let removed = 0;
+      const r = await mutate(store, (s) => { const keep = s.ventas.filter((x) => !ids.has(x.id)); removed = s.ventas.length - keep.length; return { ...s, ventas: keep }; });
+      return { status: 200, json: { ...r.state, etag: r.etag, removed } };
     }
     if (method === 'POST' && parts[0] === 'ventas' && parts[1] === 'import') {
       const incoming = Array.isArray(body?.ventas) ? (body!.ventas as Record<string, unknown>[]) : [];

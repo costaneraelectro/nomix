@@ -213,3 +213,8 @@ input:focus, select:focus { outline: none; border-color: var(--green-strong); bo
 .notice.recover { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .plan-block { display: grid; gap: 6px; padding: 12px 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; }
 .plan-block h3 { font-size: 13.5px; }
+.tag { margin-left: 6px; padding: 1px 7px; border-radius: 99px; background: var(--blue-soft); color: var(--blue); font-size: 11px; font-weight: 700; }
+.warn-txt { color: var(--warn) !important; font-weight: 600; }
+.tbl tr.off td { opacity: .4; }
+.corregir summary { color: var(--warn); }
+input[type=datetime-local] { width: 100%; background: #fff; border: 1.5px solid var(--line2); border-radius: 12px; padding: 12px 14px; min-height: 48px; }

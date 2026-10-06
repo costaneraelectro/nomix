@@ -89,14 +89,24 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
       await onAddVendedor({ codigo: r.vendedorCodigo, nombre: r.vendedorNombre });
     await onAdd({
       fecha, vendedorCodigo: r.vendedorCodigo, vendedorNombre: r.vendedorNombre, monto: r.montoLooker, orden: r.oc,
-      grupo: s.grupo, sublinea: s.nombre, boleteado: true,
+      grupo: s.grupo, sublinea: s.nombre, boleteado: true, origen: 'looker',
     });
   }
+  // OC de Looker que parecen ser pedidos ya registrados (sin OC): agregarlas duplicaría la venta
+  const ocsDePedido = useMemo(() => {
+    const s = new Set<string>();
+    plan?.listos.forEach((l) => s.add(l.oc));
+    plan?.ambiguos.forEach((a) => a.ocs.forEach((o) => s.add(o.oc)));
+    plan?.vendedorDistinto.forEach((l) => s.add(l.oc));
+    return s;
+  }, [plan]);
+  const agregables = faltantes.filter((r) => !ocsDePedido.has(r.oc));
   async function agregarTodas() {
     if (!confirmAll) { setConfirmAll(true); setTimeout(() => setConfirmAll(false), 3500); return; }
-    setConfirmAll(false);
-    for (const r of faltantes) await agregar(r);
-    onToast(`${faltantes.length} venta(s) agregadas al reporte`);
+    setConfirmAll(false); setVinculando(true);
+    try { for (const r of agregables) await agregar(r); onToast(`${agregables.length} venta(s) agregadas al reporte`); }
+    catch { onToast('No se pudo agregar todo, revisa la lista'); }
+    finally { setVinculando(false); }
   }
   async function marcarBoleteadas() {
     const todo = (c?.rows ?? []).filter((r) => r.estado !== 'sobrante' && r.estado !== 'faltante').flatMap((r) => r.ventas).filter((v) => !v.boleteado);
@@ -210,10 +220,11 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
               )}
             </div>
             <div className="toolbar">
-              {faltantes.length > 0 && (
-                <button className={confirmAll ? 'cta slim warnbtn' : 'ghost'} onClick={agregarTodas}>
-                  {confirmAll ? `¿Confirmar? Agregar ${faltantes.length} al reporte` : `Agregar las ${faltantes.length} faltantes`}</button>
+              {agregables.length > 0 && (
+                <button className={confirmAll ? 'cta slim warnbtn' : 'ghost'} disabled={vinculando} onClick={agregarTodas}>
+                  {confirmAll ? `¿Confirmar? Agregar ${agregables.length} al reporte` : `Agregar las ${agregables.length} faltantes`}</button>
               )}
+              {ocsDePedido.size > 0 && <span className="muted">{ocsDePedido.size} orden(es) parecen pedidos ya registrados: se excluyen, vincúlalas arriba.</span>}
               <button className="ghost" onClick={marcarBoleteadas}>Marcar boleteadas las que existen en Looker</button>
               <span className="spacer" />
               <button className="cta slim" onClick={descargar}>Descargar detalle (CSV)</button>
@@ -234,6 +245,7 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
                         <td className="num">{r.montoReporte ? money(r.montoReporte) : '—'}</td>
                         <td className={r.diff === 0 ? 'num' : 'num neg'}>{r.diff === 0 ? '✔' : `${r.diff > 0 ? '+' : ''}${money(r.diff)}`}</td>
                         <td className="act">
+                          {r.estado === 'faltante' && ocsDePedido.has(r.oc) && <small className="warn-txt">Parece un pedido ya registrado: vincúlalo en vez de agregar</small>}
                           {r.estado === 'faltante' && (
                             <div className="act-row">
                               <select value={sugerido(r)} onChange={(e) => setSel({ ...sel, [r.oc]: e.target.value })}>

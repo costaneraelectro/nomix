@@ -22,7 +22,7 @@ export function SaleRow({ v, onToggle, onEdit, onDelete, onSetOC, showDate }: {
       <div className="sale-main">
         <b>{money(v.monto)}</b>
         <span>{v.vendedorNombre} · {v.vendedorCodigo}</span>
-        <small>{showDate && `${v.fecha} · `}{pedido ? 'Pedido' : 'Orden'} {v.orden} · {v.sublinea}</small>
+        <small>{showDate && `${v.fecha} · `}{pedido ? 'Pedido' : 'Orden'} {v.orden} · {v.sublinea}{v.origen === 'looker' && <b className="tag">desde Looker</b>}</small>
         {pedido && onSetOC && (
           <div className={pedidoSinOC(v) ? 'oc-edit missing' : 'oc-edit'}>
             <input inputMode="numeric" placeholder="N° orden (OC)" value={oc} aria-label="N° de orden (OC)"
