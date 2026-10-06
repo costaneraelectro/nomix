@@ -30,7 +30,7 @@ export default function App() {
     setToast(m);
     setTimeout(() => setToast((t) => (t === m ? null : t)), 2600);
   }, []);
-  const setOC = (id: string, oc: string) => void d.editar(id, { ordenOC: oc || undefined }).then(() => showToast(oc ? `✔ OC ${oc} guardada` : 'OC borrada'));
+  const setOC = (id: string, oc: string) => void d.editar(id, { ordenOC: oc }).then(() => showToast(oc ? `✔ OC ${oc} guardada` : 'OC borrada'));
   const toggle = (id: string, b: boolean) => void d.editar(id, { boleteado: b });
   const remove = (id: string) => void d.eliminar(id).then(() => showToast('Venta eliminada'));
 

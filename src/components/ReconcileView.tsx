@@ -6,7 +6,7 @@ import { longDate, money } from '../lib/format';
 import {
   ESTADO_LABEL, conciliacionCsv, conciliar, parseLooker, planVinculos, type ConcilRow, type Estado, type LookerLine,
 } from '../lib/looker';
-import { pedidoSinOC } from '../lib/orden';
+import { esPedido, pedidoSinOC } from '../lib/orden';
 import type { NuevaVenta, Venta } from '../lib/store';
 import { AnimatedNumber } from './AnimatedNumber';
 
@@ -55,6 +55,19 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
   const sinOC = ventasDia.filter(pedidoSinOC).length;
   const plan = useMemo(() => (c ? planVinculos(c, ventasDia) : null), [c, ventasDia]);
   const [vinculando, setVinculando] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const pedidosConOC = ventasDia.filter((v) => esPedido(v.orden) && v.ordenOC?.trim());
+  function quitarArchivo() {
+    setLines(null); setFileName(''); setError(''); setCanales({}); setFiltro('todos'); setSel({}); setOcInput({});
+    onToast('Archivo quitado de la pantalla');
+  }
+  async function deshacerVinculos() {
+    if (!confirmUndo) { setConfirmUndo(true); setTimeout(() => setConfirmUndo(false), 3500); return; }
+    setConfirmUndo(false); setVinculando(true);
+    try { for (const v of pedidosConOC) await onEdit(v.id, { ordenOC: '' }); onToast(`✔ ${pedidosConOC.length} pedido(s) sin OC otra vez`); }
+    catch { onToast('No se pudo deshacer, intenta de nuevo'); }
+    finally { setVinculando(false); }
+  }
   async function aplicarPlan(items: { venta: Venta; oc: string }[]) {
     setVinculando(true);
     try { for (const it of items) await onEdit(it.venta.id, { ordenOC: it.oc }); onToast(`✔ ${items.length} pedido(s) vinculados a su N° de orden`); }
@@ -111,9 +124,17 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
           <input ref={input} type="file" accept=".html,.htm,.xls,text/html" hidden
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void load(f); e.target.value = ''; }} />
           <b>{fileName || 'Arrastra el archivo de Looker aquí o haz clic para elegirlo'}</b>
+          {lines && <button type="button" className="ghost slim" onClick={(e) => { e.stopPropagation(); quitarArchivo(); }}>Quitar archivo</button>}
           <small>{lines ? `${lines.length} líneas · ${new Set(lines.map((l) => l.oc)).size} órdenes` : 'Formato .html exportado desde Looker'}</small>
         </div>
         {error && <p className="err">{error}</p>}
+        {pedidosConOC.length > 0 && (
+          <div className="toolbar">
+            <p className="muted grow">{pedidosConOC.length} pedido(s) de esta fecha ya tienen N° de orden (OC) anotado.</p>
+            <button className={confirmUndo ? 'cta slim warnbtn' : 'ghost slim'} disabled={vinculando} onClick={() => void deshacerVinculos()}>
+              {confirmUndo ? `¿Confirmar? Quitar la OC de ${pedidosConOC.length} pedido(s)` : 'Deshacer vínculos de pedidos'}</button>
+          </div>
+        )}
         {sinOC > 0 && <p className="notice">⚠ {sinOC} pedido(s) de esta fecha empiezan con 1 y no tienen N° de orden (OC). No cuadrarán hasta anotarla: hazlo en la fila correspondiente o en la pestaña Ventas.</p>}
       </section>
 
