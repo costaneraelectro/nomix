@@ -4,7 +4,7 @@ import { SUBLINEAS } from '../data/metas';
 import type { Vendedor } from '../data/vendedores';
 import { longDate, money } from '../lib/format';
 import {
-  ESTADO_LABEL, conciliacionCsv, conciliar, parseLooker, type ConcilRow, type Estado, type LookerLine,
+  ESTADO_LABEL, conciliacionCsv, conciliar, parseLooker, planVinculos, type ConcilRow, type Estado, type LookerLine,
 } from '../lib/looker';
 import { pedidoSinOC } from '../lib/orden';
 import type { NuevaVenta, Venta } from '../lib/store';
@@ -53,6 +53,14 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
   const rows = c ? c.rows.filter((r) => filtro === 'todos' || r.estado === filtro) : [];
   const faltantes = c?.rows.filter((r) => r.estado === 'faltante') ?? [];
   const sinOC = ventasDia.filter(pedidoSinOC).length;
+  const plan = useMemo(() => (c ? planVinculos(c, ventasDia) : null), [c, ventasDia]);
+  const [vinculando, setVinculando] = useState(false);
+  async function aplicarPlan(items: { venta: Venta; oc: string }[]) {
+    setVinculando(true);
+    try { for (const it of items) await onEdit(it.venta.id, { ordenOC: it.oc }); onToast(`✔ ${items.length} pedido(s) vinculados a su N° de orden`); }
+    catch { onToast('No se pudo vincular, intenta de nuevo'); }
+    finally { setVinculando(false); }
+  }
   async function guardarOC(r: ConcilRow, oc: string) {
     const val = oc.trim();
     if (!val) return onToast('Escribe la OC');
@@ -111,6 +119,49 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
 
       {c && (
         <>
+          {plan && sinOC > 0 && (
+            <section className="panel">
+              <h2 className="panel-title">Pedidos ↔ N° de orden <small>{sinOC} pedido(s) sin OC en esta fecha</small></h2>
+              <p className="muted">Se cruza por <b>asesor + monto exacto</b> contra las órdenes de Looker que aún no están en el reporte.</p>
+              {plan.listos.length > 0 && (
+                <>
+                  <div className="toolbar">
+                    <span className="badge st-ok">{plan.listos.length} listos para vincular</span>
+                    <span className="spacer" />
+                    <button className="cta" disabled={vinculando} onClick={() => void aplicarPlan(plan.listos.map((l) => ({ venta: l.venta, oc: l.oc })))}>
+                      {vinculando ? 'Vinculando…' : `Vincular los ${plan.listos.length} automáticamente`}</button>
+                  </div>
+                  <div className="table-wrap"><table className="tbl">
+                    <thead><tr><th>Pedido</th><th>Asesor</th><th className="num">Monto</th><th>N° de orden (OC)</th><th>Detalle Looker</th></tr></thead>
+                    <tbody>{plan.listos.map((l) => (
+                      <tr key={l.venta.id}><td className="mono">{l.venta.orden}</td><td>{l.venta.vendedorNombre}<small>{l.venta.vendedorCodigo}</small></td>
+                        <td className="num">{money(l.venta.monto)}</td><td className="mono"><b>{l.oc}</b></td><td className="desc" title={l.descripcion}>{l.descripcion}</td></tr>
+                    ))}</tbody></table></div>
+                </>
+              )}
+              {plan.ambiguos.length > 0 && (
+                <div className="plan-block"><h3>Ambiguos ({plan.ambiguos.length}): mismo asesor y monto, distinta cantidad de pedidos y órdenes</h3>
+                  {plan.ambiguos.map((a, i) => (
+                    <p key={i} className="muted">{a.ventas[0].vendedorNombre} · {money(a.ventas[0].monto)}: {a.ventas.length} pedido(s) [{a.ventas.map((v) => v.orden).join(', ')}] vs {a.ocs.length} OC [{a.ocs.map((o) => o.oc).join(', ')}]. Anota la OC a mano.</p>
+                  ))}</div>
+              )}
+              {plan.vendedorDistinto.length > 0 && (
+                <div className="plan-block"><h3>Mismo monto, pero otro asesor en Looker ({plan.vendedorDistinto.length})</h3>
+                  {plan.vendedorDistinto.map((l) => (
+                    <div key={l.venta.id} className="toolbar"><p className="muted grow">Pedido {l.venta.orden} ({l.venta.vendedorNombre}, {money(l.venta.monto)}) ↔ OC {l.oc} · {l.descripcion}</p>
+                      <button className="ghost slim" disabled={vinculando} onClick={() => void aplicarPlan([l])}>Vincular igual</button></div>
+                  ))}</div>
+              )}
+              {plan.sinCoincidencia.length > 0 && (
+                <div className="plan-block"><h3>Sin coincidencia ({plan.sinCoincidencia.length})</h3>
+                  {plan.sinCoincidencia.map((s) => (
+                    <p key={s.venta.id} className="muted">Pedido {s.venta.orden} · {s.venta.vendedorNombre} · {money(s.venta.monto)}
+                      {s.cercana ? ` — la más cercana de ese asesor: OC ${s.cercana.oc} por ${money(s.cercana.montoLooker)}` : ' — ese asesor no tiene órdenes pendientes en Looker'}</p>
+                  ))}</div>
+              )}
+            </section>
+          )}
+
           <section className="kpi-row">
             <div className="kpi"><small>Venta según Looker</small><b><AnimatedNumber value={c.totalLooker} format={fm} /></b></div>
             <div className="kpi"><small>Venta reportada</small><b><AnimatedNumber value={c.totalReporte} format={fm} /></b></div>

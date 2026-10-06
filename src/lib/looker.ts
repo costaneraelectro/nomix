@@ -170,3 +170,38 @@ export function conciliacionCsv(c: Conciliacion, fecha: string): string {
   const lines = c.rows.map((r) => [fecha, ESTADO_LABEL[r.estado], r.oc, r.vendedor, r.canal, r.descripcion, r.montoLooker, r.montoReporte, r.diff].map(q).join(';'));
   return '﻿' + [head.map(q).join(';'), ...lines].join('\n');
 }
+
+export interface Vinculo { venta: Venta; oc: string; descripcion: string }
+export interface PlanVinculos {
+  listos: Vinculo[];                                        // un pedido ↔ una OC con mismo asesor y monto
+  ambiguos: { ventas: Venta[]; ocs: ConcilRow[] }[];        // hay más pedidos u OC iguales: no se adivina
+  vendedorDistinto: Vinculo[];                              // mismo monto pero otro asesor en Looker (revisar)
+  sinCoincidencia: { venta: Venta; cercana?: ConcilRow }[]; // ninguna OC de Looker calza
+}
+
+/** Cruza pedidos sin OC (empiezan con 1) con OC de Looker no reportadas: mismo asesor y mismo monto. */
+export function planVinculos(c: Conciliacion, ventasDia: Venta[]): PlanVinculos {
+  const faltantes = c.rows.filter((r) => r.estado === 'faltante');
+  const pedidos = ventasDia.filter(pedidoSinOC);
+  const plan: PlanVinculos = { listos: [], ambiguos: [], vendedorDistinto: [], sinCoincidencia: [] };
+  const grupos = new Map<string, Venta[]>();
+  for (const v of pedidos) { const k = `${v.vendedorCodigo}|${Math.round(v.monto)}`; grupos.set(k, [...(grupos.get(k) || []), v]); }
+  const usadas = new Set<string>();
+
+  for (const [k, ps] of grupos) {
+    const [cod, m] = k.split('|');
+    const ocs = faltantes.filter((r) => r.vendedorCodigo === cod && Math.round(r.montoLooker) === Number(m));
+    if (!ocs.length) continue;
+    if (ocs.length === ps.length) {
+      ps.sort((a, b) => a.createdAt - b.createdAt).forEach((v, i) => { plan.listos.push({ venta: v, oc: ocs[i].oc, descripcion: ocs[i].descripcion }); usadas.add(v.id); });
+    } else { plan.ambiguos.push({ ventas: ps, ocs }); ps.forEach((v) => usadas.add(v.id)); }
+  }
+  for (const v of pedidos) {
+    if (usadas.has(v.id)) continue;
+    const otros = faltantes.filter((r) => Math.round(r.montoLooker) === Math.round(v.monto));
+    if (otros.length === 1) { plan.vendedorDistinto.push({ venta: v, oc: otros[0].oc, descripcion: `${otros[0].vendedorNombre} · ${otros[0].descripcion}` }); continue; }
+    const cercana = faltantes.filter((r) => r.vendedorCodigo === v.vendedorCodigo).sort((a, b) => Math.abs(a.montoLooker - v.monto) - Math.abs(b.montoLooker - v.monto))[0];
+    plan.sinCoincidencia.push({ venta: v, cercana });
+  }
+  return plan;
+}

@@ -211,3 +211,5 @@ input:focus, select:focus { outline: none; border-color: var(--green-strong); bo
 .rank small { color: var(--muted); font-size: 12px; }
 @media (max-width: 820px) { .podium { grid-template-columns: 1fr; } }
 .notice.recover { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.plan-block { display: grid; gap: 6px; padding: 12px 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; }
+.plan-block h3 { font-size: 13.5px; }
