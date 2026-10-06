@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { GRUPOS, SUBLINEAS, type GrupoId } from '../data/metas';
 import type { Vendedor } from '../data/vendedores';
 import { todayISO } from '../lib/format';
+import { esPedido } from '../lib/orden';
 import type { NuevaVenta, Venta } from '../lib/store';
 
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -18,6 +19,7 @@ export function SaleForm({ initial, vendedores, submitLabel, onSubmit, onNewVend
   const [open, setOpen] = useState(false);
   const [monto, setMonto] = useState(initial ? String(initial.monto) : '');
   const [orden, setOrden] = useState(initial?.orden ?? '');
+  const [oc, setOc] = useState(initial?.ordenOC ?? '');
   const [grupo, setGrupo] = useState<GrupoId>(initial?.grupo ?? 'electro');
   const [sub, setSub] = useState(initial?.sublinea ?? '');
   const [boleteado, setBoleteado] = useState(initial?.boleteado ?? false);
@@ -43,9 +45,9 @@ export function SaleForm({ initial, vendedores, submitLabel, onSubmit, onNewVend
     try {
       await onSubmit({
         fecha, vendedorCodigo: vend.codigo, vendedorNombre: vend.nombre, monto: montoNum,
-        orden: orden.trim(), grupo, sublinea: sub, boleteado,
+        orden: orden.trim(), ordenOC: esPedido(orden) ? oc.trim() || undefined : undefined, grupo, sublinea: sub, boleteado,
       });
-      if (!initial) { setMonto(''); setOrden(''); setSub(''); setBoleteado(false); }
+      if (!initial) { setMonto(''); setOrden(''); setOc(''); setSub(''); setBoleteado(false); }
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'No se pudo guardar');
     } finally { setBusy(false); }
@@ -101,6 +103,13 @@ export function SaleForm({ initial, vendedores, submitLabel, onSubmit, onNewVend
           <input inputMode="numeric" placeholder="Ej. 3253493487" value={orden} autoComplete="off" onChange={(e) => setOrden(e.target.value)} />
         </label>
       </div>
+      {esPedido(orden) && (
+        <label className="field oc-field">
+          <span>N° de orden (OC) · opcional ahora</span>
+          <input inputMode="numeric" placeholder="La OC que aparece en Looker" value={oc} autoComplete="off" onChange={(e) => setOc(e.target.value)} />
+          <small className="muted">Empieza con 1: es un N° de pedido. Anota la OC cuando la tengas (también se puede después en Ventas).</small>
+        </label>
+      )}
 
       <div className="field">
         <span>Departamento</span>

@@ -5,9 +5,9 @@ import type { NuevaVenta, Venta } from '../lib/store';
 import { SaleForm } from './SaleForm';
 import { SaleRow } from './SaleRow';
 
-export function RegisterView({ ventas, vendedores, onSave, onSaved, onToggle, onEdit, onDelete, onNewVendor }: {
+export function RegisterView({ ventas, vendedores, onSave, onSaved, onToggle, onEdit, onDelete, onSetOC, onNewVendor }: {
   ventas: Venta[]; vendedores: Vendedor[]; onSave: (v: NuevaVenta) => Promise<void>; onSaved: (msg: string) => void;
-  onToggle: (id: string, b: boolean) => void; onEdit: (v: Venta) => void; onDelete: (id: string) => void; onNewVendor: (nombre: string) => void;
+  onToggle: (id: string, b: boolean) => void; onEdit: (v: Venta) => void; onDelete: (id: string) => void; onSetOC: (id: string, oc: string) => void; onNewVendor: (nombre: string) => void;
 }) {
   const recientes = ventas.slice(0, 12);
   return (
@@ -21,7 +21,7 @@ export function RegisterView({ ventas, vendedores, onSave, onSaved, onToggle, on
         <h2 className="panel-title">Últimas ventas <small>{ventas.length} en total</small></h2>
         <ul className="sales">
           <AnimatePresence initial={false}>
-            {recientes.map((v) => <SaleRow key={v.id} v={v} showDate onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} />)}
+            {recientes.map((v) => <SaleRow key={v.id} v={v} showDate onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onSetOC={onSetOC} />)}
           </AnimatePresence>
           {!recientes.length && <li className="empty-state">Aún no hay ventas registradas.</li>}
         </ul>

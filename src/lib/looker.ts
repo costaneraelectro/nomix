@@ -1,4 +1,5 @@
 import { SUBLINEAS, type GrupoId } from '../data/metas';
+import { claveOrden, pedidoSinOC } from './orden';
 import type { Venta } from './store';
 
 export interface LookerLine {
@@ -88,6 +89,8 @@ export interface ConcilRow {
   ventas: Venta[];            // ventas registradas con esa OC
   sugerencia: { grupo: GrupoId; sublinea: string };
   vendedorDistinto: boolean;
+  pedidosSinOC: Venta[];      // ventas del reporte con N° de pedido (empieza con 1) sin OC
+  candidatoOC?: string;       // OC de Looker que podría corresponder (mismo vendedor y monto)
 }
 
 export interface Conciliacion {
@@ -103,7 +106,7 @@ export function conciliar(lines: LookerLine[], ventas: Venta[]): Conciliacion {
   const byOc = new Map<string, LookerLine[]>();
   for (const l of lines) { const k = norm(l.oc); byOc.set(k, [...(byOc.get(k) || []), l]); }
   const repByOc = new Map<string, Venta[]>();
-  for (const v of ventas) { const k = norm(v.orden); repByOc.set(k, [...(repByOc.get(k) || []), v]); }
+  for (const v of ventas) { const k = norm(claveOrden(v)); repByOc.set(k, [...(repByOc.get(k) || []), v]); }
 
   const rows: ConcilRow[] = [];
   for (const [k, ls] of byOc) {
@@ -121,6 +124,7 @@ export function conciliar(lines: LookerLine[], ventas: Venta[]): Conciliacion {
       montoLooker, montoReporte, diff: montoReporte - montoLooker, ventas: rep,
       sugerencia: guessSublinea(top.skuDesc),
       vendedorDistinto: Boolean(rep.length && top.vendedorCodigo && rep.some((v) => v.vendedorCodigo !== top.vendedorCodigo)),
+      pedidosSinOC: rep.filter(pedidoSinOC),
     });
   }
   for (const [k, rep] of repByOc) {
@@ -131,7 +135,14 @@ export function conciliar(lines: LookerLine[], ventas: Venta[]): Conciliacion {
       vendedor: `${rep[0].vendedorCodigo} - ${rep[0].vendedorNombre}`, vendedorReportado: rep[0].vendedorCodigo,
       canal: '', descripcion: rep.map((v) => v.sublinea).join(' · '), montoLooker: 0, montoReporte,
       diff: montoReporte, ventas: rep, sugerencia: { grupo: rep[0].grupo, sublinea: rep[0].sublinea }, vendedorDistinto: false,
+      pedidosSinOC: rep.filter(pedidoSinOC),
     });
+  }
+  // Pedidos sin OC: buscar una orden de Looker faltante con mismo vendedor y monto
+  for (const r of rows) {
+    if (r.estado !== 'sobrante' || r.pedidosSinOC.length !== 1) continue;
+    const cand = rows.filter((x) => x.estado === 'faltante' && x.vendedorCodigo === r.vendedorCodigo && Math.abs(x.montoLooker - r.montoReporte) <= 1);
+    if (cand.length === 1) r.candidatoOC = cand[0].oc;
   }
   const orden: Record<Estado, number> = { faltante: 0, diferencia: 1, sobrante: 2, ok: 3 };
   rows.sort((a, b) => orden[a.estado] - orden[b.estado] || Math.abs(b.diff) - Math.abs(a.diff));

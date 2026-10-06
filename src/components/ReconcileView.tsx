@@ -6,6 +6,7 @@ import { longDate, money } from '../lib/format';
 import {
   ESTADO_LABEL, conciliacionCsv, conciliar, parseLooker, type ConcilRow, type Estado, type LookerLine,
 } from '../lib/looker';
+import { pedidoSinOC } from '../lib/orden';
 import type { NuevaVenta, Venta } from '../lib/store';
 import { AnimatedNumber } from './AnimatedNumber';
 
@@ -29,6 +30,7 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
   const [filtro, setFiltro] = useState<Estado | 'todos'>('todos');
   const [sel, setSel] = useState<Record<string, string>>({});
   const [confirmAll, setConfirmAll] = useState(false);
+  const [ocInput, setOcInput] = useState<Record<string, string>>({});
   const input = useRef<HTMLInputElement>(null);
 
   async function load(file: File) {
@@ -50,6 +52,13 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
   }, [c]);
   const rows = c ? c.rows.filter((r) => filtro === 'todos' || r.estado === filtro) : [];
   const faltantes = c?.rows.filter((r) => r.estado === 'faltante') ?? [];
+  const sinOC = ventasDia.filter(pedidoSinOC).length;
+  async function guardarOC(r: ConcilRow, oc: string) {
+    const val = oc.trim();
+    if (!val) return onToast('Escribe la OC');
+    for (const v of r.pedidosSinOC) await onEdit(v.id, { ordenOC: val });
+    onToast(`OC ${val} guardada`);
+  }
 
   const sugerido = (r: ConcilRow) => sel[r.oc] ?? KEY({ grupo: r.sugerencia.grupo, nombre: r.sugerencia.sublinea });
 
@@ -97,6 +106,7 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
           <small>{lines ? `${lines.length} líneas · ${new Set(lines.map((l) => l.oc)).size} órdenes` : 'Formato .html exportado desde Looker'}</small>
         </div>
         {error && <p className="err">{error}</p>}
+        {sinOC > 0 && <p className="notice">⚠ {sinOC} pedido(s) de esta fecha empiezan con 1 y no tienen N° de orden (OC). No cuadrarán hasta anotarla: hazlo en la fila correspondiente o en la pestaña Ventas.</p>}
       </section>
 
       {c && (
@@ -168,7 +178,20 @@ export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor
                             <button className="ghost slim" onClick={() => void onEdit(r.ventas[0].id, { monto: r.montoLooker }).then(() => onToast('Monto ajustado a Looker'))}>Ajustar a Looker</button>
                           )}
                           {r.estado === 'diferencia' && r.ventas.length > 1 && <small>{r.ventas.length} ventas con esta OC · editar a mano</small>}
-                          {r.estado === 'sobrante' && <small>Revisar OC o fecha</small>}
+                          {r.estado === 'sobrante' && r.pedidosSinOC.length > 0 && (
+                            <div className="act-col">
+                              {r.candidatoOC && (
+                                <button className="cta slim" onClick={() => void guardarOC(r, r.candidatoOC!)}>Vincular con OC {r.candidatoOC}</button>
+                              )}
+                              <div className="act-row">
+                                <input className="oc-in" inputMode="numeric" placeholder="N° orden (OC)" value={ocInput[r.oc] ?? ''}
+                                  onChange={(e) => setOcInput({ ...ocInput, [r.oc]: e.target.value })} />
+                                <button className="ghost slim" onClick={() => void guardarOC(r, ocInput[r.oc] ?? '')}>Guardar OC</button>
+                              </div>
+                              <small>Pedido {r.pedidosSinOC[0].orden}: anota su OC</small>
+                            </div>
+                          )}
+                          {r.estado === 'sobrante' && r.pedidosSinOC.length === 0 && <small>Revisar OC o fecha</small>}
                         </td>
                       </motion.tr>
                     ))}

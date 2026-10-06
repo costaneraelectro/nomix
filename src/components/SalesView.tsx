@@ -1,21 +1,24 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { descargarCsv, ventasCsv } from '../lib/export';
+import { pedidoSinOC } from '../lib/orden';
 import { longDate, money, todayISO } from '../lib/format';
 import type { Venta } from '../lib/store';
 import { SaleRow } from './SaleRow';
 
-export function SalesView({ ventas, onToggle, onEdit, onDelete, onToast }: {
-  ventas: Venta[]; onToggle: (id: string, b: boolean) => void; onEdit: (v: Venta) => void; onDelete: (id: string) => void; onToast: (m: string) => void;
+export function SalesView({ ventas, onToggle, onEdit, onDelete, onSetOC, onToast }: {
+  ventas: Venta[]; onToggle: (id: string, b: boolean) => void; onEdit: (v: Venta) => void; onDelete: (id: string) => void;
+  onSetOC: (id: string, oc: string) => void; onToast: (m: string) => void;
 }) {
   const [fecha, setFecha] = useState(todayISO());
-  const [filtro, setFiltro] = useState<'todas' | 'pend'>('todas');
+  const [filtro, setFiltro] = useState<'todas' | 'pend' | 'sinoc'>('todas');
   const [buscar, setBuscar] = useState('');
   const list = useMemo(() => {
     const n = buscar.trim().toLowerCase();
-    return ventas.filter((v) => v.fecha === fecha && (filtro === 'todas' || !v.boleteado) &&
+    return ventas.filter((v) => v.fecha === fecha && (filtro === 'todas' || (filtro === 'pend' ? !v.boleteado : pedidoSinOC(v))) &&
       (!n || v.orden.includes(n) || v.vendedorNombre.toLowerCase().includes(n) || v.vendedorCodigo.includes(n)));
   }, [ventas, fecha, filtro, buscar]);
+  const sinOC = ventas.filter(pedidoSinOC).length;
   const total = list.reduce((a, v) => a + v.monto, 0);
   const descargar = (todas: boolean) => {
     const sel = todas ? ventas : ventas.filter((v) => v.fecha === fecha);
@@ -32,6 +35,7 @@ export function SalesView({ ventas, onToggle, onEdit, onDelete, onToast }: {
           <div className="seg small">
             <button className={filtro === 'todas' ? 'on' : ''} onClick={() => setFiltro('todas')}>Todas</button>
             <button className={filtro === 'pend' ? 'on' : ''} onClick={() => setFiltro('pend')}>Sin boletear</button>
+            <button className={filtro === 'sinoc' ? 'on' : ''} onClick={() => setFiltro('sinoc')}>Pedidos sin OC {sinOC}</button>
           </div></div>
         <div className="field"><span>Descargar detalle</span>
           <div className="btn-pair">
@@ -42,7 +46,7 @@ export function SalesView({ ventas, onToggle, onEdit, onDelete, onToast }: {
       <p className="muted">{longDate(fecha)} · {list.length} orden(es) · {money(total)}</p>
       <ul className="sales wide">
         <AnimatePresence initial={false}>
-          {list.map((v) => <SaleRow key={v.id} v={v} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} />)}
+          {list.map((v) => <SaleRow key={v.id} v={v} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onSetOC={onSetOC} />)}
         </AnimatePresence>
         {!list.length && <li className="empty-state">Sin ventas para este filtro.</li>}
       </ul>
