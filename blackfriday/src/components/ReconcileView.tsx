@@ -1,0 +1,309 @@
+import { useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import type { Vendedor } from '../data/vendedores';
+import { useConfig } from '../lib/config';
+import { longDate, money } from '../lib/format';
+import {
+  ESTADO_LABEL, conciliacionCsv, conciliar, parseLooker, planVinculos, type ConcilRow, type Estado, type LookerLine,
+} from '../lib/looker';
+import { esPedido, pedidoSinOC } from '../lib/orden';
+import type { NuevaVenta, Venta } from '../lib/store';
+import { AnimatedNumber } from './AnimatedNumber';
+
+const fm = (n: number) => money(n);
+const yesterday = () => {
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const KEY = (s: { grupo: string; nombre: string }) => `${s.grupo}|${s.nombre}`;
+
+export function ReconcileView({ ventas, vendedores, onAdd, onEdit, onAddVendedor, onToast }: {
+  ventas: Venta[]; vendedores: Vendedor[]; onAdd: (v: NuevaVenta) => Promise<void>;
+  onEdit: (id: string, patch: Partial<NuevaVenta>) => Promise<void>; onAddVendedor: (v: Vendedor) => Promise<void>; onToast: (m: string) => void;
+}) {
+  const { deptos, dias } = useConfig();
+  const hoy = new Date(); const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  const [fecha, setFecha] = useState(dias.includes(yesterday()) ? yesterday() : dias.filter((d) => d < hoyISO).pop() ?? yesterday());
+  const [lines, setLines] = useState<LookerLine[] | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [error, setError] = useState('');
+  const [drag, setDrag] = useState(false);
+  const [canales, setCanales] = useState<Record<string, boolean>>({});
+  const [filtro, setFiltro] = useState<Estado | 'todos'>('todos');
+  const [sel, setSel] = useState<Record<string, string>>({});
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [ocInput, setOcInput] = useState<Record<string, string>>({});
+  const input = useRef<HTMLInputElement>(null);
+
+  async function load(file: File) {
+    try {
+      const ls = parseLooker(await file.text());
+      if (!ls.length) throw new Error('No encontré filas de ventas en el archivo');
+      setLines(ls); setFileName(file.name); setError(''); setFiltro('todos');
+      setCanales(Object.fromEntries([...new Set(ls.map((l) => l.canal))].map((c) => [c, true])));
+    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo leer el archivo'); }
+  }
+
+  const ventasDia = useMemo(() => ventas.filter((v) => v.fecha === fecha), [ventas, fecha]);
+  const usadas = useMemo(() => (lines ? lines.filter((l) => canales[l.canal] !== false) : []), [lines, canales]);
+  const c = useMemo(() => (lines ? conciliar(usadas, ventasDia, deptos) : null), [lines, usadas, ventasDia, deptos]);
+  const counts = useMemo(() => {
+    const k: Record<Estado, number> = { ok: 0, diferencia: 0, faltante: 0, sobrante: 0 };
+    c?.rows.forEach((r) => { k[r.estado]++; });
+    return k;
+  }, [c]);
+  const rows = c ? c.rows.filter((r) => filtro === 'todos' || r.estado === filtro) : [];
+  const faltantes = c?.rows.filter((r) => r.estado === 'faltante') ?? [];
+  const sinOC = ventasDia.filter(pedidoSinOC).length;
+  const plan = useMemo(() => (c ? planVinculos(c, ventasDia) : null), [c, ventasDia]);
+  const [vinculando, setVinculando] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const pedidosConOC = ventasDia.filter((v) => esPedido(v.orden) && v.ordenOC?.trim());
+  function quitarArchivo() {
+    setLines(null); setFileName(''); setError(''); setCanales({}); setFiltro('todos'); setSel({}); setOcInput({});
+    onToast('Archivo quitado de la pantalla');
+  }
+  async function deshacerVinculos() {
+    if (!confirmUndo) { setConfirmUndo(true); setTimeout(() => setConfirmUndo(false), 3500); return; }
+    setConfirmUndo(false); setVinculando(true);
+    try { for (const v of pedidosConOC) await onEdit(v.id, { ordenOC: '' }); onToast(`✔ ${pedidosConOC.length} pedido(s) sin OC otra vez`); }
+    catch { onToast('No se pudo deshacer, intenta de nuevo'); }
+    finally { setVinculando(false); }
+  }
+  async function aplicarPlan(items: { venta: Venta; oc: string }[]) {
+    setVinculando(true);
+    try { for (const it of items) await onEdit(it.venta.id, { ordenOC: it.oc }); onToast(`✔ ${items.length} pedido(s) vinculados a su N° de orden`); }
+    catch { onToast('No se pudo vincular, intenta de nuevo'); }
+    finally { setVinculando(false); }
+  }
+  async function guardarOC(r: ConcilRow, oc: string) {
+    const val = oc.trim();
+    if (!val) return onToast('Escribe la OC');
+    for (const v of r.pedidosSinOC) await onEdit(v.id, { ordenOC: val });
+    onToast(`OC ${val} guardada`);
+  }
+
+  const sugerido = (r: ConcilRow) => sel[r.oc] ?? KEY({ grupo: r.sugerencia.grupo, nombre: r.sugerencia.sublinea });
+
+  async function agregar(r: ConcilRow) {
+    const s = deptos.find((x) => KEY(x) === sugerido(r)) ?? deptos[0];
+    if (r.vendedorCodigo && !vendedores.some((v) => v.codigo === r.vendedorCodigo))
+      await onAddVendedor({ codigo: r.vendedorCodigo, nombre: r.vendedorNombre });
+    await onAdd({
+      fecha, vendedorCodigo: r.vendedorCodigo, vendedorNombre: r.vendedorNombre, monto: r.montoLooker, orden: r.oc,
+      grupo: s.grupo, sublinea: s.nombre, boleteado: true, origen: 'looker',
+    });
+  }
+  // OC de Looker que parecen ser pedidos ya registrados (sin OC): agregarlas duplicaría la venta
+  const ocsDePedido = useMemo(() => {
+    const s = new Set<string>();
+    plan?.listos.forEach((l) => s.add(l.oc));
+    plan?.ambiguos.forEach((a) => a.ocs.forEach((o) => s.add(o.oc)));
+    plan?.vendedorDistinto.forEach((l) => s.add(l.oc));
+    return s;
+  }, [plan]);
+  const agregables = faltantes.filter((r) => !ocsDePedido.has(r.oc));
+  async function agregarTodas() {
+    if (!confirmAll) { setConfirmAll(true); setTimeout(() => setConfirmAll(false), 3500); return; }
+    setConfirmAll(false); setVinculando(true);
+    try { for (const r of agregables) await agregar(r); onToast(`${agregables.length} venta(s) agregadas al reporte`); }
+    catch { onToast('No se pudo agregar todo, revisa la lista'); }
+    finally { setVinculando(false); }
+  }
+  async function marcarBoleteadas() {
+    const todo = (c?.rows ?? []).filter((r) => r.estado !== 'sobrante' && r.estado !== 'faltante').flatMap((r) => r.ventas).filter((v) => !v.boleteado);
+    for (const v of todo) await onEdit(v.id, { boleteado: true });
+    onToast(`${todo.length} orden(es) marcadas como boleteadas`);
+  }
+  function descargar() {
+    if (!c) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([conciliacionCsv(c, fecha)], { type: 'text/csv;charset=utf-8' }));
+    a.download = `conciliacion-no-mix-${fecha}.csv`; a.click();
+  }
+
+  return (
+    <div className="stack">
+      <section className="panel">
+        <div className="toolbar">
+          <label className="field"><span>Fecha del archivo</span>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></label>
+          <p className="muted grow">Sube cada día el <b>Detalle Vendedores</b> de Looker. Se compara contra lo reportado el {longDate(fecha).toLowerCase()} ({ventasDia.length} venta(s) registradas).</p>
+        </div>
+        <div className={drag ? 'drop over' : 'drop'} onClick={() => input.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+          onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) void load(f); }}>
+          <input ref={input} type="file" accept=".html,.htm,.xls,text/html" hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void load(f); e.target.value = ''; }} />
+          <b>{fileName || 'Arrastra el archivo de Looker aquí o haz clic para elegirlo'}</b>
+          {lines && <button type="button" className="ghost slim" onClick={(e) => { e.stopPropagation(); quitarArchivo(); }}>Quitar archivo</button>}
+          <small>{lines ? `${lines.length} líneas · ${new Set(lines.map((l) => l.oc)).size} órdenes` : 'Formato .html exportado desde Looker'}</small>
+        </div>
+        {error && <p className="err">{error}</p>}
+        {pedidosConOC.length > 0 && (
+          <div className="toolbar">
+            <p className="muted grow">{pedidosConOC.length} pedido(s) de esta fecha ya tienen N° de orden (OC) anotado.</p>
+            <button className={confirmUndo ? 'cta slim warnbtn' : 'ghost slim'} disabled={vinculando} onClick={() => void deshacerVinculos()}>
+              {confirmUndo ? `¿Confirmar? Quitar la OC de ${pedidosConOC.length} pedido(s)` : 'Deshacer vínculos de pedidos'}</button>
+          </div>
+        )}
+        {sinOC > 0 && <p className="notice">⚠ {sinOC} pedido(s) de esta fecha empiezan con 1 y no tienen N° de orden (OC). No cuadrarán hasta anotarla: hazlo en la fila correspondiente o en la pestaña Ventas.</p>}
+      </section>
+
+      {c && (
+        <>
+          {plan && sinOC > 0 && (
+            <section className="panel">
+              <h2 className="panel-title">Pedidos ↔ N° de orden <small>{sinOC} pedido(s) sin OC en esta fecha</small></h2>
+              <p className="muted">Se cruza por <b>asesor + monto exacto</b> contra las órdenes de Looker que aún no están en el reporte.</p>
+              {plan.listos.length > 0 && (
+                <>
+                  <div className="toolbar">
+                    <span className="badge st-ok">{plan.listos.length} listos para vincular</span>
+                    <span className="spacer" />
+                    <button className="cta" disabled={vinculando} onClick={() => void aplicarPlan(plan.listos.map((l) => ({ venta: l.venta, oc: l.oc })))}>
+                      {vinculando ? 'Vinculando…' : `Vincular los ${plan.listos.length} automáticamente`}</button>
+                  </div>
+                  <div className="table-wrap"><table className="tbl">
+                    <thead><tr><th>Pedido</th><th>Asesor</th><th className="num">Monto</th><th>N° de orden (OC)</th><th>Detalle Looker</th></tr></thead>
+                    <tbody>{plan.listos.map((l) => (
+                      <tr key={l.venta.id}><td className="mono">{l.venta.orden}</td><td>{l.venta.vendedorNombre}<small>{l.venta.vendedorCodigo}</small></td>
+                        <td className="num">{money(l.venta.monto)}</td><td className="mono"><b>{l.oc}</b></td><td className="desc" title={l.descripcion}>{l.descripcion}</td></tr>
+                    ))}</tbody></table></div>
+                </>
+              )}
+              {plan.ambiguos.length > 0 && (
+                <div className="plan-block"><h3>Ambiguos ({plan.ambiguos.length}): mismo asesor y monto, distinta cantidad de pedidos y órdenes</h3>
+                  {plan.ambiguos.map((a, i) => (
+                    <p key={i} className="muted">{a.ventas[0].vendedorNombre} · {money(a.ventas[0].monto)}: {a.ventas.length} pedido(s) [{a.ventas.map((v) => v.orden).join(', ')}] vs {a.ocs.length} OC [{a.ocs.map((o) => o.oc).join(', ')}]. Anota la OC a mano.</p>
+                  ))}</div>
+              )}
+              {plan.vendedorDistinto.length > 0 && (
+                <div className="plan-block"><h3>Mismo monto, pero otro asesor en Looker ({plan.vendedorDistinto.length})</h3>
+                  {plan.vendedorDistinto.map((l) => (
+                    <div key={l.venta.id} className="toolbar"><p className="muted grow">Pedido {l.venta.orden} ({l.venta.vendedorNombre}, {money(l.venta.monto)}) ↔ OC {l.oc} · {l.descripcion}</p>
+                      <button className="ghost slim" disabled={vinculando} onClick={() => void aplicarPlan([l])}>Vincular igual</button></div>
+                  ))}</div>
+              )}
+              {plan.sinCoincidencia.length > 0 && (
+                <div className="plan-block"><h3>Sin coincidencia ({plan.sinCoincidencia.length})</h3>
+                  {plan.sinCoincidencia.map((s) => (
+                    <p key={s.venta.id} className="muted">Pedido {s.venta.orden} · {s.venta.vendedorNombre} · {money(s.venta.monto)}
+                      {s.cercana ? ` — la más cercana de ese asesor: OC ${s.cercana.oc} por ${money(s.cercana.montoLooker)}` : ' — ese asesor no tiene órdenes pendientes en Looker'}</p>
+                  ))}</div>
+              )}
+            </section>
+          )}
+
+          <section className="kpi-row">
+            <div className="kpi"><small>Venta según Looker</small><b><AnimatedNumber value={c.totalLooker} format={fm} /></b></div>
+            <div className="kpi"><small>Venta reportada</small><b><AnimatedNumber value={c.totalReporte} format={fm} /></b></div>
+            <div className={c.totalReporte - c.totalLooker === 0 ? 'kpi good' : 'kpi bad'}><small>Diferencia (reportado − Looker)</small>
+              <b><AnimatedNumber value={c.totalReporte - c.totalLooker} format={(n) => `${n > 0 ? '+' : ''}${money(n)}`} /></b></div>
+            <div className="kpi"><small>Órdenes que cuadran</small><b>{counts.ok} <em>de {c.rows.length}</em></b></div>
+          </section>
+
+          <section className="panel">
+            <div className="toolbar">
+              <div className="seg small wrap">
+                <button className={filtro === 'todos' ? 'on' : ''} onClick={() => setFiltro('todos')}>Todos {c.rows.length}</button>
+                {(['faltante', 'diferencia', 'sobrante', 'ok'] as Estado[]).map((e) => (
+                  <button key={e} className={filtro === e ? `on st-${e}` : ''} onClick={() => setFiltro(e)}>{ESTADO_LABEL[e]} {counts[e]}</button>
+                ))}
+              </div>
+              <span className="spacer" />
+              {Object.keys(canales).length > 1 && (
+                <div className="chips-inline">Canal:
+                  {Object.keys(canales).map((k) => (
+                    <label key={k} className={canales[k] ? 'mini-check on' : 'mini-check'}>
+                      <input type="checkbox" checked={canales[k]} onChange={(e) => setCanales({ ...canales, [k]: e.target.checked })} />{k}</label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="toolbar">
+              {agregables.length > 0 && (
+                <button className={confirmAll ? 'cta slim warnbtn' : 'ghost'} disabled={vinculando} onClick={agregarTodas}>
+                  {confirmAll ? `¿Confirmar? Agregar ${agregables.length} al reporte` : `Agregar las ${agregables.length} faltantes`}</button>
+              )}
+              {ocsDePedido.size > 0 && <span className="muted">{ocsDePedido.size} orden(es) parecen pedidos ya registrados: se excluyen, vincúlalas arriba.</span>}
+              <button className="ghost" onClick={marcarBoleteadas}>Marcar boleteadas las que existen en Looker</button>
+              <span className="spacer" />
+              <button className="cta slim" onClick={descargar}>Descargar detalle (CSV)</button>
+            </div>
+
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Estado</th><th>OC</th><th>Vendedor</th><th>Detalle Looker</th><th className="num">Looker</th><th className="num">Reporte</th><th className="num">Dif.</th><th>Acción</th></tr></thead>
+                <tbody>
+                  <AnimatePresence initial={false}>
+                    {rows.map((r) => (
+                      <motion.tr key={r.oc} layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+                        <td><span className={`badge st-${r.estado}`}>{ESTADO_LABEL[r.estado]}</span></td>
+                        <td className="mono">{r.oc}{r.canal && <small>{r.canal}</small>}</td>
+                        <td>{r.vendedorNombre}<small>{r.vendedorCodigo}{r.vendedorDistinto && ' · ⚠ vendedor distinto en reporte'}</small></td>
+                        <td className="desc" title={r.descripcion}>{r.descripcion}</td>
+                        <td className="num">{r.montoLooker ? money(r.montoLooker) : '—'}</td>
+                        <td className="num">{r.montoReporte ? money(r.montoReporte) : '—'}</td>
+                        <td className={r.diff === 0 ? 'num' : 'num neg'}>{r.diff === 0 ? '✔' : `${r.diff > 0 ? '+' : ''}${money(r.diff)}`}</td>
+                        <td className="act">
+                          {r.estado === 'faltante' && ocsDePedido.has(r.oc) && <small className="warn-txt">Parece un pedido ya registrado: vincúlalo en vez de agregar</small>}
+                          {r.estado === 'faltante' && (
+                            <div className="act-row">
+                              <select value={sugerido(r)} onChange={(e) => setSel({ ...sel, [r.oc]: e.target.value })}>
+                                {['calzado', 'electro', 'otras'].map((g) => (
+                                  <optgroup key={g} label={g === 'otras' ? 'Otras líneas' : g[0].toUpperCase() + g.slice(1)}>
+                                    {deptos.filter((s) => s.grupo === g).map((s) => <option key={KEY(s)} value={KEY(s)}>{s.nombre}</option>)}
+                                  </optgroup>
+                                ))}
+                              </select>
+                              <button className="cta slim" onClick={() => void agregar(r)}>Agregar</button>
+                            </div>
+                          )}
+                          {r.estado === 'diferencia' && r.ventas.length === 1 && (
+                            <button className="ghost slim" onClick={() => void onEdit(r.ventas[0].id, { monto: r.montoLooker }).then(() => onToast('Monto ajustado a Looker'))}>Ajustar a Looker</button>
+                          )}
+                          {r.estado === 'diferencia' && r.ventas.length > 1 && <small>{r.ventas.length} ventas con esta OC · editar a mano</small>}
+                          {r.estado === 'sobrante' && r.pedidosSinOC.length > 0 && (
+                            <div className="act-col">
+                              {r.candidatoOC && (
+                                <button className="cta slim" onClick={() => void guardarOC(r, r.candidatoOC!)}>Vincular con OC {r.candidatoOC}</button>
+                              )}
+                              <div className="act-row">
+                                <input className="oc-in" inputMode="numeric" placeholder="N° orden (OC)" value={ocInput[r.oc] ?? ''}
+                                  onChange={(e) => setOcInput({ ...ocInput, [r.oc]: e.target.value })} />
+                                <button className="ghost slim" onClick={() => void guardarOC(r, ocInput[r.oc] ?? '')}>Guardar OC</button>
+                              </div>
+                              <small>Pedido {r.pedidosSinOC[0].orden}: anota su OC</small>
+                            </div>
+                          )}
+                          {r.estado === 'sobrante' && r.pedidosSinOC.length === 0 && <small>Revisar OC o fecha</small>}
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+              {!rows.length && <p className="empty-state">Nada en esta categoría.</p>}
+            </div>
+          </section>
+
+          <details className="panel">
+            <summary>Resumen por vendedor ({c.porVendedor.length})</summary>
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Vendedor</th><th className="num">Looker</th><th className="num">Reportado</th><th className="num">Diferencia</th></tr></thead>
+                <tbody>
+                  {c.porVendedor.map((v) => (
+                    <tr key={v.codigo}><td>{v.nombre}<small>{v.codigo}</small></td><td className="num">{money(v.looker)}</td><td className="num">{money(v.reporte)}</td>
+                      <td className={v.diff === 0 ? 'num' : 'num neg'}>{v.diff === 0 ? '✔' : `${v.diff > 0 ? '+' : ''}${money(v.diff)}`}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </>
+      )}
+    </div>
+  );
+}
