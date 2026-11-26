@@ -9,8 +9,7 @@ export interface Venta {
   vendedorNombre: string;
   monto: number;
   orden: string;      // lo que se anotó (puede ser N° de pedido, empieza con 1)
-  ordenOC?: string;   // N° de orden (OC) que aparece en Looker
-  origen?: 'looker';  // agregada desde Conciliar (no la registró un asesor)
+  ordenOC?: string;   // N° de orden (OC) cuando lo anotado es un N° de pedido
   grupo: GrupoId;
   sublinea: string;
   boleteado: boolean;
@@ -128,20 +127,6 @@ export function useData() {
     setVentas(next); writeLocal(LS_VENTAS, next);
   }, [modo, viaApi]);
 
-  const eliminarVarias = useCallback(async (ids: string[]) => {
-    if (modo === 'api') return viaApi('POST', '/api/ventas/delete', { ids });
-    const set = new Set(ids);
-    const next = readLocal<Venta>(LS_VENTAS).filter((v) => !set.has(v.id));
-    setVentas(next); writeLocal(LS_VENTAS, next);
-  }, [modo, viaApi]);
-
-  const importarVentas = useCallback(async (lista: NuevaVenta[]) => {
-    if (!lista.length) return;
-    if (modo === 'api') return viaApi('POST', '/api/ventas/import', { ventas: lista });
-    const next = [...lista.map((v) => ({ ...v, createdAt: Date.now(), id: crypto.randomUUID() })), ...readLocal<Venta>(LS_VENTAS)];
-    setVentas(next); writeLocal(LS_VENTAS, next);
-  }, [modo, viaApi]);
-
   const agregarVendedor = useCallback(async (v: Vendedor) => {
     if (modo === 'api') return viaApi('POST', '/api/vendedores', v);
     const next = [...readLocal<Vendedor>(LS_VEND).filter((x) => x.codigo !== v.codigo), v];
@@ -155,6 +140,6 @@ export function useData() {
 
   return {
     modo, pendientesLocales, importarLocales, ventas, vendedores, config, configGuardada, loading, error,
-    agregar, editar, eliminar, eliminarVarias, importarVentas, agregarVendedor, guardarConfig,
+    agregar, editar, eliminar, agregarVendedor, guardarConfig,
   };
 }

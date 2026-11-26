@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Modal } from './components/Modal';
-import { ReconcileView } from './components/ReconcileView';
 import { RegisterView } from './components/RegisterView';
 import { RankingView } from './components/RankingView';
 import { ReportView } from './components/ReportView';
@@ -17,7 +16,6 @@ const TABS = [
   { id: 'reporte', label: 'Reporte', icon: 'M4 20V10M10 20V4M16 20v-8M22 20H2' },
   { id: 'ranking', label: 'Ranking', icon: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3' },
   { id: 'ventas', label: 'Ventas', icon: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' },
-  { id: 'conciliar', label: 'Conciliar', icon: 'M5 12l4 4L19 6M4 20h16' },
   { id: 'config', label: 'Config', icon: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4' },
 ] as const;
 type Tab = (typeof TABS)[number]['id'];
@@ -41,7 +39,9 @@ export default function App() {
     <ConfigContext.Provider value={d.config}>
     <div className="app">
       <header className="brand">
-        <img src="/logo.webp" alt="Black Friday" />
+        <div className="brand-art">
+          <img src="/logo.webp" alt="Black Friday" width={2000} height={347} decoding="async" fetchPriority="high" />
+        </div>
         <div className="brand-bar">
           <h1>Reporte No Mix <small>Costanera Center · {d.config.evento}</small></h1>
           <span className={d.modo === 'local' || d.modo === 'detectando' ? 'sync' : 'sync on'}
@@ -78,11 +78,7 @@ export default function App() {
             )}
             {tab === 'reporte' && <ReportView ventas={d.ventas} onToast={showToast} onGoConfig={() => setTab('config')} />}
             {tab === 'ranking' && <RankingView ventas={d.ventas} />}
-            {tab === 'ventas' && <SalesView ventas={d.ventas} onToggle={toggle} onEdit={setEditing} onDelete={remove} onSetOC={setOC} onDeleteMany={d.eliminarVarias} onImport={d.importarVentas} onToast={showToast} />}
-            {tab === 'conciliar' && (
-              <ReconcileView ventas={d.ventas} vendedores={d.vendedores} onAdd={d.agregar} onEdit={d.editar}
-                onAddVendedor={d.agregarVendedor} onToast={showToast} />
-            )}
+            {tab === 'ventas' && <SalesView ventas={d.ventas} onToggle={toggle} onEdit={setEditing} onDelete={remove} onSetOC={setOC} onToast={showToast} />}
             {tab === 'config' && <SettingsView config={d.config} guardada={d.configGuardada} onSave={d.guardarConfig} onToast={showToast} />}
           </motion.div>
         </AnimatePresence>

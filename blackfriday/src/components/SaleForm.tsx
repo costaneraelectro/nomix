@@ -108,7 +108,7 @@ export function SaleForm({ initial, vendedores, submitLabel, onSubmit, onNewVend
       {esPedido(orden) && (
         <label className="field oc-field">
           <span>N° de orden (OC) · opcional ahora</span>
-          <input inputMode="numeric" placeholder="La OC que aparece en Looker" value={oc} autoComplete="off" onChange={(e) => setOc(e.target.value)} />
+          <input inputMode="numeric" placeholder="N° de orden (OC)" value={oc} autoComplete="off" onChange={(e) => setOc(e.target.value)} />
           <small className="muted">Empieza con 1: es un N° de pedido. Anota la OC cuando la tengas (también se puede después en Ventas).</small>
         </label>
       )}
